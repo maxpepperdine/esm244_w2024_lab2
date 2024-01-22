@@ -1,0 +1,113 @@
+---
+title: "ESM 244 Lab 2 Practice"
+author: "Max"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    number-sections: true
+editor: visual
+execute: 
+  echo: true
+  message: false
+  warning: false
+---
+
+```{r setup}
+library(tidyverse)
+library(here)
+library(tsibble) #for time series analysis
+library(feasts) #feature extraction and statistics for time series
+library(fable)
+```
+
+```{r load data}
+mauna_data <- read_csv(here("data/co2_mauna_loa.csv"))
+```
+
+## Analysis Part 1:
+
+Convert the date columns to a proper date format, then turn the data frame into a time-series data frame.
+
+```{r}
+mauna_ts <- mauna_data %>% 
+  mutate(date = tsibble::yearmonth(date)) %>% 
+  as_tsibble(index = date,
+            key = NULL)
+```
+
+```{r}
+ggplot(mauna_ts, aes(x = date, y = co2_mean)) +
+  geom_line()
+```
+
+#### Exploratory season plot
+
+```{r}
+mauna_ts %>% 
+  gg_season(y = co2_mean, pal = hcl.colors(n = 9)) + #from the 'feasts' package
+  theme_light() +
+  labs(x = "Month", y = "Mean co2 level (ppm)")
+```
+
+#### Exploratory subseries plot
+
+```{r}
+mauna_ts %>% 
+  gg_subseries(y = co2_mean)
+```
+
+#### Decomposition
+
+```{r}
+dcmp <- mauna_ts %>% 
+  model(feasts::STL(co2_mean ~ season(period = "1 year") + 
+                      trend(window = 49)))
+
+components(dcmp) %>% 
+  autoplot()
+```
+
+
+## Analysis Part 2:
+
+#### ETS model 1
+1. Create an ETS exponential smoothing model, including (if appropriate) seasonality and trend. Consider whether the trend and seasonality should be considered as additive or multiplicative (you can try different combinations to see how it changes your forecast)
+
+-   It appears that seasonality and trend should be included, and considered as additive
+
+2. Use the ETS model to forecast CO2 levels for the next 20 years, then plot that forecast on the original data using autoplot().
+
+3. Use the ETS model and broom::augment to fit modeled values against the actual observed values. Plot the two together, and plot a histogram of the residuals. How well does our model fit our historic observed values?
+
+```{r}
+mauna_fit <- mauna_ts %>% 
+  model(ets = ETS(co2_mean ~ season(method = "A") + trend(method = "A"))) 
+
+co2_forecast <- mauna_fit %>% 
+  forecast(h = "20 years") #create a forecast of 20 years
+
+co2_forecast %>% 
+  autoplot(mauna_ts) #without 'mauna_ts' it just shows the 20 yr forecast
+```
+
+#### ETS model 2
+
+Optional: create an ETS model just trained on data through 2003, and then create a 20-year forecast - and then compare those forecasted values against the observed values from 2004-2023.
+
+```{r}
+mauna_fit <- mauna_ts %>% 
+  filter_index(. ~ "2003-12") %>% #focus on data through 2003
+  model(ets = ETS(co2_mean ~ season(method = "A") + trend(method = "A"))) 
+
+co2_forecast <- mauna_fit %>% 
+  forecast(h = "20 years") #create a forecast of 20 years
+
+co2_forecast %>% 
+  autoplot(mauna_ts) #without 'mauna_ts' it just shows the 20 yr forecast
+```
+
+
+
+
+
